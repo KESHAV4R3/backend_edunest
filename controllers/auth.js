@@ -245,6 +245,8 @@ exports.googleLogin = async (req, res) => {
         // Set token as secure cookie
         res.cookie("token", token, {
             httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? "None" : "Lax",
             secure: true,
             sameSite: "None",
             expires: new Date(Date.now() + 10 * 60 * 60 * 1000),
@@ -448,6 +450,8 @@ exports.login = async (req, res) => {
             // return cookie as a response
             res.cookie('token', token, {
                 httpOnly: true,
+                secure: isProduction,
+            sameSite: isProduction ? "None" : "Lax",
                 secure: true,
                 sameSite: 'None',
                 expires: new Date(Date.now() + 10 * 60 * 60 * 1000),
@@ -487,6 +491,8 @@ exports.logout = async (req, res) => {
     try {
        res.clearCookie("token", {
             httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? "None" : "Lax",
             secure: true,
             sameSite: 'None',
         });
