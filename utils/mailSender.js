@@ -1,35 +1,32 @@
 const nodemailer = require("nodemailer");
+require('dotenv').config();
 
 exports.sendMail = async (email, title, body) => {
     try {
-        console.log(`Sending email to: ${email}`);
-        
+        // Create a transporter using Google SMTP
         const transporter = nodemailer.createTransport({
-            host: process.env.MAIL_HOST,
-            port: parseInt(process.env.MAIL_PORT),
-            secure: process.env.MAIL_SECURE === 'true',
+            service: 'gmail',
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false, // true for 465, false for other ports
             auth: {
-                user: process.env.MAIL_USER,
-                pass: process.env.MAIL_PASSWORD,
-            }
+                user: process.env.MAIL_USER, // Your Gmail address
+                pass: process.env.MAIL_PASSWORD, // Your App Password
+            },
         });
 
+        // Send email
         const info = await transporter.sendMail({
-            from: `"EDUNEST EDTECH" <${process.env.MAIL_FROM}>`,
+            from: `"EDUNEST EDTECH" <${process.env.MAIL_USER}>`, // Sender address
             to: email,
             subject: title,
             html: body
         });
 
-        console.log("Email sent successfully:", info.messageId);
+        console.log('Email sent:', info.messageId);
         return info;
-        
     } catch (error) {
-        console.error('Email send failed:', {
-            to: email,
-            error: error.message,
-            response: error.response
-        });
-        throw error;
+        console.error('Error sending email:', error.message);
+        throw error; // Re-throw to handle in the calling function
     }
 };
