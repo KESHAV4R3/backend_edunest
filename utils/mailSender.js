@@ -1,37 +1,49 @@
 const nodemailer = require("nodemailer");
 require('dotenv').config();
 
-// Use different settings based on environment
-const isProduction = process.env.NODE_ENV === 'production';
-
 exports.sendMail = async (email, title, body) => {
     try {
+        const smtpPort = parseInt(process.env.SMTP_PORT) || 587;
+
         // SMTP configuration
         const smtpConfig = {
             host: process.env.SMTP_HOST || 'smtp.gmail.com',
-            port: parseInt(process.env.SMTP_PORT) || 587,
-            secure: isProduction, // true for 465, false for other ports
+            port: smtpPort,
+            // Port 465 uses SSL/TLS (secure: true)
+            // Port 587 uses STARTTLS (secure: false)
+            secure: smtpPort === 465,
             auth: {
                 user: process.env.MAIL_USER,
                 pass: process.env.MAIL_PASSWORD,
             },
-            // Add additional security settings
+            // TLS settings for better compatibility
             tls: {
-                // Do not fail on invalid certs in production
-                rejectUnauthorized: isProduction ? true : false,
+                // Don't fail on invalid certs (some SMTP servers have issues)
+                rejectUnauthorized: false,
+                // Minimum TLS version
+                minVersion: 'TLSv1.2',
             },
-            // Add connection timeout
+            // Connection timeouts
             connectionTimeout: 10000, // 10 seconds
-            // Add greeting timeout
             greetingTimeout: 5000, // 5 seconds
+            socketTimeout: 10000, // 10 seconds
         };
+
+        // Log SMTP configuration (without password)
+        console.log('SMTP Config:', {
+            host: smtpConfig.host,
+            port: smtpConfig.port,
+            secure: smtpConfig.secure,
+            user: smtpConfig.auth.user,
+            env: process.env.NODE_ENV || 'development',
+        });
 
         // Create a transporter
         const transporter = nodemailer.createTransport(smtpConfig);
 
         // Verify connection configuration
         await transporter.verify();
-        console.log('Server is ready to take our messages');
+        console.log('✅ SMTP connection verified - Server is ready to send emails');
 
         // Email options
         const mailOptions = {
