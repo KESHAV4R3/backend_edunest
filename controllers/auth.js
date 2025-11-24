@@ -1,5 +1,6 @@
 // in this controller all the business logic that are related to authentication and authorization are written
 const axios = require('axios')
+const isProduction = process.env.NODE_ENV === 'production';
 const Otp = require('../models/Otp');
 const User = require('../models/User');
 const Profile = require('../models/Profile');
@@ -406,10 +407,12 @@ exports.loginAutomatic = async (req, res) => {
 // login ww
 exports.login = async (req, res) => {
     try {
+        console.log('Login request received:', req.body);
 
         // fetch data from req.body
         const { email, password, accountType } = req.body;
         if (!email || !password || !accountType) {
+            console.log('Missing fields in request:', { email: !!email, password: !!password, accountType: !!accountType });
             return res.status(400).json({
                 success: false,
                 message: 'All fields are required'
@@ -423,21 +426,35 @@ exports.login = async (req, res) => {
         }
 
         // check if user is there or not
+        console.log('Searching for user with email:', email);
         const currentUser = await User.findOne({ email }).lean();
+        console.log('User found:', currentUser ? 'Yes' : 'No');
+        
         if (!currentUser) {
+            console.log('User not found in database');
             return res.status(404).json({
                 success: false,
                 message: 'User not found, kindly Register'
             })
         }
+        console.log('User account type:', currentUser.accountType, 'Requested account type:', accountType);
         if (currentUser.accountType != accountType) {
-            return res.status(400).json({ success: false, message: "Invalid account type" })
+            console.log('Account type mismatch');
+            return res.status(400).json({ 
+                success: false, 
+                message: `Invalid account type. Expected ${currentUser.accountType} but got ${accountType}` 
+            })
         }
 
         // match the password
-        if (await bcrypt.compare(password, currentUser.password)) {
+        console.log('Comparing passwords...');
+        const isPasswordMatch = await bcrypt.compare(password, currentUser.password);
+        console.log('Password match result:', isPasswordMatch);
+        
+        if (isPasswordMatch) {
 
             // generate the token
+            console.log('Generating JWT token...');
             const payload = {
                 name: currentUser.firstName + ' ' + currentUser.lastName,
                 email: currentUser.email,
@@ -445,7 +462,9 @@ exports.login = async (req, res) => {
                 id: currentUser._id,
                 image: currentUser.image
             }
+            console.log('JWT payload:', payload);
             const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '10h' });
+            console.log('JWT token generated successfully');
 
             // return cookie as a response
             res.cookie('token', token, {
@@ -479,9 +498,11 @@ exports.login = async (req, res) => {
         }
 
     } catch (error) {
+        console.error('Login error:', error);
         return res.status(500).json({
             success: false,
-            message: 'Server Error, unable to login'
+            message: 'Server Error, unable to login',
+            error: error.message
         })
     }
 }
