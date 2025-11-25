@@ -3,35 +3,46 @@ require('dotenv').config();
 
 exports.sendMail = async (email, title, body) => {
     try {
-        const smtpPort = parseInt(process.env.SMTP_PORT) || 587;
+        let transporter;
 
-        // SMTP configuration
-        const smtpConfig = {
-            host: process.env.SMTP_HOST || 'smtp.gmail.com',
-            port: smtpPort,
-            // Port 465 uses SSL/TLS (secure: true)
-            // Port 587 uses STARTTLS (secure: false)
-            secure: smtpPort === 465,
-            auth: {
-                user: process.env.MAIL_USER,
-                pass: process.env.MAIL_PASSWORD,
-            },
-            // TLS settings for better compatibility
-            tls: {
-                // Don't fail on invalid certs (some SMTP servers have issues)
-                rejectUnauthorized: false,
-                // Minimum TLS version
-                minVersion: 'TLSv1.2',
-            },
-            // Connection timeouts
-            connectionTimeout: 10000, // 10 seconds
-            greetingTimeout: 5000, // 5 seconds
-            socketTimeout: 10000, // 10 seconds
-        };
+        // Use SendGrid for production (when SENDGRID_API_KEY is set)
+        // Use Gmail for local development
+        if (process.env.SENDGRID_API_KEY) {
+            console.log('📧 Using SendGrid for email delivery');
+            transporter = nodemailer.createTransport({
+                host: 'smtp.sendgrid.net',
+                port: 587,
+                secure: false,
+                auth: {
+                    user: 'apikey', // SendGrid uses 'apikey' as username
+                    pass: process.env.SENDGRID_API_KEY,
+                },
+            });
+        } else {
+            console.log('📧 Using Gmail SMTP for email delivery');
+            // Try port 2525 first (cloud-friendly), then 465 (SSL), fallback to 587
+            const smtpPort = parseInt(process.env.SMTP_PORT) || 2525;
+            const isSSL = smtpPort === 465;
 
-       
-        // Create a transporter
-        const transporter = nodemailer.createTransport(smtpConfig);
+            console.log(`   Attempting connection on port ${smtpPort} (SSL: ${isSSL})`);
+
+            transporter = nodemailer.createTransport({
+                host: process.env.SMTP_HOST || 'smtp.gmail.com',
+                port: smtpPort,
+                secure: isSSL, // true for 465, false for other ports
+                auth: {
+                    user: process.env.MAIL_USER,
+                    pass: process.env.MAIL_PASSWORD,
+                },
+                tls: {
+                    rejectUnauthorized: false,
+                    minVersion: 'TLSv1.2',
+                },
+                connectionTimeout: 15000, // Increased timeout for slow connections
+                greetingTimeout: 10000,
+                socketTimeout: 15000,
+            });
+        }
 
         // Verify connection configuration
         await transporter.verify();
