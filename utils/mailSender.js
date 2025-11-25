@@ -29,15 +29,7 @@ exports.sendMail = async (email, title, body) => {
             socketTimeout: 10000, // 10 seconds
         };
 
-        // Log SMTP configuration (without password)
-        console.log('SMTP Config:', {
-            host: smtpConfig.host,
-            port: smtpConfig.port,
-            secure: smtpConfig.secure,
-            user: smtpConfig.auth.user,
-            env: process.env.NODE_ENV || 'development',
-        });
-
+       
         // Create a transporter
         const transporter = nodemailer.createTransport(smtpConfig);
 

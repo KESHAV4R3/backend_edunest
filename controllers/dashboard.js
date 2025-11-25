@@ -436,10 +436,24 @@ exports.sendmailToAdmin = async (req, res) => {
             }
         )
     } catch (error) {
-        return res.json(
+        console.error('Error sending mail to admin:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            response: error.response,
+            command: error.command
+        });
+        return res.status(500).json(
             {
-                success: true,
-                message: 'Mail sent to admin successfully, internal server error'
+                success: false,
+                message: 'Failed to send mail to admin',
+                errorDetails: {
+                    message: error.message,
+                    code: error.code,
+                    response: error.response,
+                    command: error.command,
+                    stack: error.stack
+                }
             }
         )
     }
@@ -493,11 +507,24 @@ exports.sendmailToUserByAdmin = async (req, res) => {
             }
         )
     } catch (error) {
-
-        return res.json(
+        console.error('Error sending mail to user by admin:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            response: error.response,
+            command: error.command
+        });
+        return res.status(500).json(
             {
-                success: true,
-                message: 'unable to send mail to user, internal server error'
+                success: false,
+                message: 'Failed to send mail to user',
+                errorDetails: {
+                    message: error.message,
+                    code: error.code,
+                    response: error.response,
+                    command: error.command,
+                    stack: error.stack
+                }
             }
         )
     }
