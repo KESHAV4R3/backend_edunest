@@ -9,6 +9,7 @@ const { deleteFromCloudinary } = require('../utils/cloudinaryDelete');
 const { sendMail } = require('../utils/mailSender');
 var jwt = require('jsonwebtoken');
 const Course = require('../models/Course')
+const isProduction = process.env.NODE_ENV === "production";
 
 
 // get all earnings
@@ -57,6 +58,9 @@ exports.updateProfile = async (req, res) => {
             gender,
             dob,
             about, profession } = req.body
+
+        console.log("updateProfile Request Body:", req.body);
+        console.log("updateProfile Request Files:", req.files);
 
         const userId = req.user.id;
         const profilePicture = req.files ? req.files.profilePicture : null;
@@ -138,6 +142,8 @@ exports.updateProfile = async (req, res) => {
         })
 
     } catch (error) {
+        console.error("Error in updateProfile:", error);
+        console.error("Stack trace:", error.stack);
         return res.status(500).json({
             success: false,
             message: 'Internal server error, unable to update profile',

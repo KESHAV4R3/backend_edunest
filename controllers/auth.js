@@ -19,6 +19,7 @@ exports.sendOtp = async (req, res) => {
 
         // fetch data from req.body
         const { email } = req.body;
+        console.log("sendOtp Request Body:", req.body);
         if (!email || !req.body) {
             return res.status(404).json({
                 success: false,
@@ -65,6 +66,7 @@ exports.sendOtp = async (req, res) => {
         });
 
     } catch (error) {
+        console.error("Error in sendOtp:", error);
         return res.status(500).json({
             success: false,
             message: 'Server Error, unable to send Otp'
@@ -78,6 +80,7 @@ exports.signUp = async (req, res) => {
 
         // fetch data from req.body
         const { firstName, lastName, email, password, confirmPassword, accountType, otp } = req.body;
+        console.log("signUp Request Body:", { ...req.body, password: "***", confirmPassword: "***" });
         if (!firstName || !email || !password || !confirmPassword || !accountType || !otp) {
             return res.status(400).json({
                 success: false,
@@ -134,6 +137,7 @@ exports.signUp = async (req, res) => {
 
         if (newUser) {
             //  if user is created successfully then send a mail to the user
+            console.log("User created successfully. Sending welcome email to:", email);
             await sendMail(email, "Welcome to EDUNEST",
                 `
              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #000000; color: #ffffff; border: 1px solid #333333;">
@@ -185,6 +189,7 @@ exports.signUp = async (req, res) => {
         });
 
     } catch (error) {
+        console.error("Error in signUp:", error);
         return res.status(500).json({
             success: false,
             message: 'Server Error, unable to register the user'
@@ -369,7 +374,7 @@ exports.googleSignUp = async (req, res) => {
             message: "Server Error. Unable to register the user with Google.",
         });
     }
-};    
+};
 
 // automatic login ww
 exports.loginAutomatic = async (req, res) => {
@@ -429,7 +434,7 @@ exports.login = async (req, res) => {
         console.log('Searching for user with email:', email);
         const currentUser = await User.findOne({ email }).lean();
         console.log('User found:', currentUser ? 'Yes' : 'No');
-        
+
         if (!currentUser) {
             console.log('User not found in database');
             return res.status(404).json({
@@ -440,9 +445,9 @@ exports.login = async (req, res) => {
         console.log('User account type:', currentUser.accountType, 'Requested account type:', accountType);
         if (currentUser.accountType != accountType) {
             console.log('Account type mismatch');
-            return res.status(400).json({ 
-                success: false, 
-                message: `Invalid account type. Expected ${currentUser.accountType} but got ${accountType}` 
+            return res.status(400).json({
+                success: false,
+                message: `Invalid account type. Expected ${currentUser.accountType} but got ${accountType}`
             })
         }
 
@@ -450,7 +455,7 @@ exports.login = async (req, res) => {
         console.log('Comparing passwords...');
         const isPasswordMatch = await bcrypt.compare(password, currentUser.password);
         console.log('Password match result:', isPasswordMatch);
-        
+
         if (isPasswordMatch) {
 
             // generate the token
@@ -470,7 +475,7 @@ exports.login = async (req, res) => {
             res.cookie('token', token, {
                 httpOnly: true,
                 secure: isProduction,
-            sameSite: isProduction ? "None" : "Lax",
+                sameSite: isProduction ? "None" : "Lax",
                 secure: true,
                 sameSite: 'None',
                 expires: new Date(Date.now() + 10 * 60 * 60 * 1000),
@@ -510,7 +515,7 @@ exports.login = async (req, res) => {
 // logout ww
 exports.logout = async (req, res) => {
     try {
-       res.clearCookie("token", {
+        res.clearCookie("token", {
             httpOnly: true,
             secure: isProduction,
             sameSite: isProduction ? "None" : "Lax",

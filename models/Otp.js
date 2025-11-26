@@ -58,10 +58,17 @@ async function sendVerificationEmail(email, otp) {
 
             `
         );
-        console.log("Email sent successfully: " + mailResponse);
+        console.log("Email sent successfully: ", mailResponse.messageId);
     } catch (error) {
-        console.log("Error in sending email: " + error);
-        return;
+        console.error("Error in sending verification email:", {
+            message: error.message,
+            code: error.code,
+            response: error.response,
+            stack: error.stack
+        });
+        // We don't throw here to prevent the OTP creation from failing, 
+        // but this means the user won't get the email even if the API returns success.
+        // For debugging, this log is crucial.
     }
 }
 
