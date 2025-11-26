@@ -5,10 +5,10 @@ exports.sendMail = async (email, title, body) => {
     try {
         console.log("📧 Using Gmail SMTP for email delivery");
 
-        const transporter = nodemailer.createTransport({
+        const mailConfig = {
             host: process.env.MAIL_HOST,
             port: process.env.MAIL_PORT,
-            secure: process.env.MAIL_PORT == 465, // true for 465, false for other ports
+            secure: process.env.MAIL_PORT == 465,
             auth: {
                 user: process.env.MAIL_USER,
                 pass: process.env.MAIL_PASSWORD,
@@ -20,7 +20,19 @@ exports.sendMail = async (email, title, body) => {
             connectionTimeout: 10000,
             greetingTimeout: 5000,
             socketTimeout: 10000,
+            // Force IPv4 to avoid IPv6 issues on some cloud providers
+            family: 4,
+        };
+
+        console.log("SMTP Config:", {
+            host: mailConfig.host,
+            port: mailConfig.port,
+            secure: mailConfig.secure,
+            user: mailConfig.auth.user,
+            // Do not log the password
         });
+
+        const transporter = nodemailer.createTransport(mailConfig);
 
         // Verify SMTP connection
         await transporter.verify();
