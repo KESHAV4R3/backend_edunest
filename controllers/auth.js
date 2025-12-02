@@ -13,27 +13,25 @@ const { OAuth2Client } = require("google-auth-library");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// send otp ww
+
 exports.sendOtp = async (req, res) => {
     try {
-
-        // fetch data from req.body
         const { email } = req.body;
-        console.log("sendOtp Request Body:", req.body);
-        if (!email || !req.body) {
+
+        if (!email) {
             return res.status(404).json({
                 success: false,
                 message: 'Email is required'
             });
         }
 
-        // verify the validity of the email
+        // validate email format
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         if (!emailRegex.test(email)) {
             return res.status(400).json({ success: false, message: "Invalid email format" });
         }
 
-        // check if user is already exist
+        // check if user already exists
         if (await User.findOne({ email }).lean()) {
             return res.status(400).json({
                 success: false,
@@ -41,38 +39,40 @@ exports.sendOtp = async (req, res) => {
             });
         }
 
-        // generate otp
-        let otp = otpGenerator.generate(6, {
-            upperCaseAlphabets: false,
-            lowerCaseAlphabets: false,
-            specialChars: false
-        });
-
-        // make sure the otp is unique , generate the otp till it is unique
-        while (await Otp.findOne({ otp: otp }).lean()) {
-            otp = otpGenerator.generate(6, {
-                upperCaseAlphabets: false,
-                lowerCaseAlphabets: false,
-                specialChars: false
-            })
+        // generate unique OTP
+        let otp = otpGenerator.generate(6, { upperCaseAlphabets: false, lowerCaseAlphabets: false, specialChars: false });
+        while (await Otp.findOne({ otp }).lean()) {
+            otp = otpGenerator.generate(6, { upperCaseAlphabets: false, lowerCaseAlphabets: false, specialChars: false });
         }
 
-        // add this entry to the Otp database collection
-        await Otp.create({ otp: otp, email: email });
+        // send OTP email
+        await sendMail(
+            email,
+            'Your OTP for EduNest',
+            `Your OTP code is: ${otp}. It is valid for 5 minutes.`
+        );
 
-        res.status(200).json({
+        // upsert OTP in DB (avoid duplicates)
+        await Otp.updateOne(
+            { email: email },
+            { $set: { otp: otp, createdAt: new Date() } },
+            { upsert: true }
+        );
+
+        return res.status(200).json({
             success: true,
-            message: 'Otp has been sent successfully in the users mail'
+            message: 'OTP has been sent successfully to your email.'
         });
 
     } catch (error) {
         console.error("Error in sendOtp:", error);
         return res.status(500).json({
             success: false,
-            message: 'Server Error, unable to send Otp'
+            message: 'Server Error, unable to send OTP'
         });
     }
-}
+};
+
 
 // sign-up ww
 exports.signUp = async (req, res) => {
@@ -80,7 +80,6 @@ exports.signUp = async (req, res) => {
 
         // fetch data from req.body
         const { firstName, lastName, email, password, confirmPassword, accountType, otp } = req.body;
-        console.log("signUp Request Body:", { ...req.body, password: "***", confirmPassword: "***" });
         if (!firstName || !email || !password || !confirmPassword || !accountType || !otp) {
             return res.status(400).json({
                 success: false,
@@ -137,7 +136,6 @@ exports.signUp = async (req, res) => {
 
         if (newUser) {
             //  if user is created successfully then send a mail to the user
-            console.log("User created successfully. Sending welcome email to:", email);
             await sendMail(email, "Welcome to EDUNEST",
                 `
              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #000000; color: #ffffff; border: 1px solid #333333;">
@@ -189,7 +187,6 @@ exports.signUp = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Error in signUp:", error);
         return res.status(500).json({
             success: false,
             message: 'Server Error, unable to register the user'
@@ -202,6 +199,8 @@ exports.googleLogin = async (req, res) => {
     try {
         const { access_token, accountType } = req.body;
 
+
+        console.log("Access token:", req.body);
         if (!access_token) {
             return res.status(400).json({
                 success: false,
@@ -216,23 +215,23 @@ exports.googleLogin = async (req, res) => {
             },
         });
 
-        const { email, name, picture } = data;
+        const { email } = data;
 
         // Check if user exists in DB
         const user = await User.findOne({ email });
-
-        if (accountType != user.accountType) {
-            return res.json({
-                success: false,
-                message: "invalid User"
-            })
-        }
 
         if (!user) {
             return res.status(404).json({
                 success: false,
                 message: "User not found. Please register first.",
             });
+        }
+
+        if (accountType != user.accountType) {
+            return res.json({
+                success: false,
+                message: "invalid User"
+            })
         }
 
         // Create JWT token
@@ -412,12 +411,10 @@ exports.loginAutomatic = async (req, res) => {
 // login ww
 exports.login = async (req, res) => {
     try {
-        console.log('Login request received:', req.body);
 
         // fetch data from req.body
         const { email, password, accountType } = req.body;
         if (!email || !password || !accountType) {
-            console.log('Missing fields in request:', { email: !!email, password: !!password, accountType: !!accountType });
             return res.status(400).json({
                 success: false,
                 message: 'All fields are required'
@@ -431,12 +428,9 @@ exports.login = async (req, res) => {
         }
 
         // check if user is there or not
-        console.log('Searching for user with email:', email);
         const currentUser = await User.findOne({ email }).lean();
-        console.log('User found:', currentUser ? 'Yes' : 'No');
 
         if (!currentUser) {
-            console.log('User not found in database');
             return res.status(404).json({
                 success: false,
                 message: 'User not found, kindly Register'
@@ -452,14 +446,11 @@ exports.login = async (req, res) => {
         }
 
         // match the password
-        console.log('Comparing passwords...');
         const isPasswordMatch = await bcrypt.compare(password, currentUser.password);
-        console.log('Password match result:', isPasswordMatch);
 
         if (isPasswordMatch) {
 
             // generate the token
-            console.log('Generating JWT token...');
             const payload = {
                 name: currentUser.firstName + ' ' + currentUser.lastName,
                 email: currentUser.email,
@@ -467,9 +458,7 @@ exports.login = async (req, res) => {
                 id: currentUser._id,
                 image: currentUser.image
             }
-            console.log('JWT payload:', payload);
             const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '10h' });
-            console.log('JWT token generated successfully');
 
             // return cookie as a response
             res.cookie('token', token, {

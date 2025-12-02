@@ -142,8 +142,7 @@ exports.updateProfile = async (req, res) => {
         })
 
     } catch (error) {
-        console.error("Error in updateProfile:", error);
-        console.error("Stack trace:", error.stack);
+        
         return res.status(500).json({
             success: false,
             message: 'Internal server error, unable to update profile',
@@ -335,7 +334,7 @@ exports.getAllCourses = async (req, res) => {
         const allCourses = await User.findById(userId).select("course").populate({ path: "course", select: "name description language price  thumbnail averageRating" }).lean();
         if (!allCourses) {
             return res.status(404).json({
-                success: false,
+                success: true,
                 message: 'No course found'
             })
         }
