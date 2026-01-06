@@ -200,7 +200,6 @@ exports.googleLogin = async (req, res) => {
         const { access_token, accountType } = req.body;
 
 
-        console.log("Access token:", req.body);
         if (!access_token) {
             return res.status(400).json({
                 success: false,

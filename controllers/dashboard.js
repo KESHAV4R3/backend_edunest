@@ -10,6 +10,106 @@ const { sendMail } = require('../utils/mailSender');
 var jwt = require('jsonwebtoken');
 const Course = require('../models/Course')
 const isProduction = process.env.NODE_ENV === "production";
+const CourseProgress = require("../models/courseProgress");
+const RatingAndReview = require('../models/RatingAndReview');
+
+
+// get student analytics 
+exports.getStudentAnalytics = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // 1. Fetch user and enrolled courses
+        // We populate section and subSection to count total videos accurately
+        const userDetails = await User.findById(userId)
+            .populate({
+                path: "course",
+                populate: {
+                    path: "section",
+                    populate: {
+                        path: "subSection",
+                    },
+                },
+            })
+            .lean();
+
+        if (!userDetails) {
+            return res.status(404).json({ success: false, message: "User record missing" });
+        }
+
+        const enrolledCourses = (userDetails.course || []).filter(c => c !== null);
+
+        // 2. Process each course for progress
+        const analyticsData = await Promise.all(
+            enrolledCourses.map(async (course) => {
+                
+                // Calculate Total Videos in this course
+                let totalVideos = 0;
+                if (course.section) {
+                    course.section.forEach((sec) => {
+                        if (sec.subSection) totalVideos += sec.subSection.length;
+                    });
+                }
+
+                // Get progress for this student and this course
+                // Use 'courseId' to match your reference code
+                const progressDetails = await CourseProgress.findOne({
+                    courseId: course._id, 
+                    userId: userId,
+                });
+
+                const completedVideos = progressDetails?.completedVideos?.length || 0;
+                
+                // Calculate percentage
+                const progressPercentage = totalVideos === 0 
+                    ? 0 
+                    : Math.round((completedVideos / totalVideos) * 100);
+
+                // Fetch the review left by this student
+                const userReview = await RatingAndReview.findOne({
+                    course: course._id,
+                    user: userId,
+                }).select("rating review createdAt");
+
+                return {
+                    courseId: course._id,
+                    courseName: course.name,
+                    thumbnail: course.thumbnail,
+                    totalVideos,
+                    completedVideos,
+                    progressPercentage,
+                    review: userReview || null,
+                };
+            })
+        );
+
+        // 3. Global Dashboard Calculations
+        const totalEnrolled = analyticsData.length;
+        
+        // Overall progress: Sum of all completed videos / Sum of all total videos
+        const globalCompleted = analyticsData.reduce((acc, curr) => acc + curr.completedVideos, 0);
+        const globalTotal = analyticsData.reduce((acc, curr) => acc + curr.totalVideos, 0);
+        
+        const overallProgress = globalTotal === 0 ? 0 : Math.round((globalCompleted / globalTotal) * 100);
+
+        return res.status(200).json({
+            success: true,
+            analytics: {
+                totalEnrolled,
+                overallProgress,
+                courses: analyticsData,
+                totalModulesCompleted: globalCompleted
+            },
+        });
+    } catch (error) {
+        console.error("Student Analytics Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to generate analytics report",
+            error: error.message
+        });
+    }
+};
 
 
 // get all earnings
@@ -19,30 +119,67 @@ exports.getAllEarnings = async (req, res) => {
         const instructor = await User.findById(userId)
             .populate({
                 path: "earnings.course",
-                select: "name price thumbnail", // Customize fields to return
+                select: "name price thumbnail createdAt description", 
             })
             .lean();
 
         if (!instructor) {
-            return res.status(404).json({
-                success: false,
-                message: "Instructor not found",
-            });
+            return res.status(404).json({ success: false, message: "Instructor not found" });
         }
 
-        // Return the populated earnings array
+        // 1. Filter out courses missing Name, Thumbnail, or Data
+        const validEarnings = (instructor.earnings || []).filter(item => 
+            item.course && 
+            item.course.name && 
+            item.course.thumbnail
+        );
+
+        // 2. Analytical Calculations
+        let totalOverallRevenue = 0;
+        let totalOverallStudents = 0;
+        
+        // Yield Rate Calculation: (Actual Students / Target Benchmark of 50) * 100
+        const enrollmentTarget = 50; 
+
+        const processedCourses = validEarnings.map(item => {
+            const revenue = (item.course?.price || 0) * (item.studentEnrolled || 0);
+            totalOverallRevenue += revenue;
+            totalOverallStudents += item.studentEnrolled;
+
+            return {
+                id: item.course._id,
+                name: item.course.name,
+                thumbnail: item.course.thumbnail,
+                price: item.course.price,
+                students: item.studentEnrolled,
+                revenue: revenue,
+                createdAt: item.course.createdAt,
+                // Yield rate logic: Percentage of reaching the target
+                yieldRate: Math.min(Math.round((item.studentEnrolled / enrollmentTarget) * 100), 100)
+            };
+        });
+
+        // 3. Find Last Course Created (Latest Date)
+        const lastCourseCreated = processedCourses.length > 0 
+            ? processedCourses.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] 
+            : null;
+
         return res.status(200).json({
             success: true,
-            earnings: instructor.earnings || [],
+            analytics: {
+                totalOverallRevenue,
+                totalOverallStudents,
+                totalLiveCourses: processedCourses.length,
+                lastCourse: lastCourseCreated,
+                courses: processedCourses
+            }
         });
     } catch (error) {
-        console.error("Error fetching earnings:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to fetch earnings",
-        });
+        console.error("Dashboard Analytics Error:", error);
+        return res.status(500).json({ success: false, message: "Failed to generate dashboard data" });
     }
 };
+
 // update profile  ww
 exports.updateProfile = async (req, res) => {
 
@@ -268,62 +405,106 @@ exports.getUserDetails = async (req, res) => {
 // get All Students ww
 exports.getAllStudents = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = 10;
+        const skip = (page - 1) * limit;
+
+        const total = await User.countDocuments({ accountType: "Student" });
+        const totalPages = Math.ceil(total / limit);
+        const isLastPage = page >= totalPages;
+
         const students = await User.find(
             { accountType: "Student" },
             "firstName lastName image email"
         )
             .populate({ path: "profile" })
+            .skip(skip)
+            .limit(limit)
             .lean()
             .exec();
 
-        if (students.length == 0) {
+        if (students.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: 'No students found'
-            })
+            });
         }
+
         return res.json({
             success: true,
-            message: 'All students fetched successfully',
-            students
-        })
+            message: 'Students fetched successfully',
+            data: {
+                students,
+                pagination: {
+                    currentPage: page,
+                    totalPages,
+                    totalItems: total,
+                    itemsPerPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPreviousPage: page > 1,
+                    isLastPage: isLastPage  // Added this line
+                }
+            }
+        });
     } catch (error) {
         return res.status(500).json({
             success: false,
-            message: 'Internal server error, unable to get all students',
+            message: 'Internal server error, unable to get students',
             error: error.message
-        })
+        });
     }
-}
+};
 
 // get All Instructor ww
 exports.getAllInstructors = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = 10;
+        const skip = (page - 1) * limit;
+
+        const total = await User.countDocuments({ accountType: "Instructor" });
+        const totalPages = Math.ceil(total / limit);
+        const isLastPage = page >= totalPages;
+
         const instructors = await User.find(
             { accountType: "Instructor" },
             "firstName lastName image email"
         )
             .populate({ path: "profile" })
+            .skip(skip)
+            .limit(limit)
             .lean()
             .exec();
 
-        if (instructors.length == 0) {
+        if (instructors.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'No instructor found'
-            })
+                message: 'No instructors found'
+            });
         }
+
         return res.json({
             success: true,
-            message: 'All instructors fetched successfully',
-            instructors
-        })
+            message: 'Instructors fetched successfully',
+            data: {
+                instructors,
+                pagination: {
+                    currentPage: page,
+                    totalPages,
+                    totalItems: total,
+                    itemsPerPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPreviousPage: page > 1,
+                    isLastPage: isLastPage
+                }
+            }
+        });
     } catch (error) {
         return res.status(500).json({
             success: false,
-            message: 'Internal server error, unable to get all instructor',
+            message: 'Internal server error, unable to get instructors',
             error: error.message
-        })
+        });
     }
 }
 
@@ -331,56 +512,135 @@ exports.getAllInstructors = async (req, res) => {
 exports.getAllCourses = async (req, res) => {
     try {
         const userId = req.user.id;
-        const allCourses = await User.findById(userId).select("course").populate({ path: "course", select: "name description language price  thumbnail averageRating" }).lean();
-        if (!allCourses) {
-            return res.status(404).json({
-                success: true,
-                message: 'No course found'
+        const page = parseInt(req.query.page) || 1;
+        const limit = 10;
+        const skip = (page - 1) * limit;
+
+        // First get the user's courses count
+        const user = await User.findById(userId).select("course");
+        const total = user?.course?.length || 0;
+        const totalPages = Math.ceil(total / limit);
+        const isLastPage = page >= totalPages;
+
+        // Get paginated courses
+        const userWithCourses = await User.findById(userId)
+            .select("course")
+            .populate({ 
+                path: "course", 
+                select: "name description language price thumbnail averageRating",
+                options: {
+                    skip: skip,
+                    limit: limit
+                }
             })
+            .lean();
+
+        if (!userWithCourses || !userWithCourses.course || userWithCourses.course.length === 0) {
+            return res.status(200).json({
+                success: true,
+                message: 'No courses found',
+                data: {
+                    courses: [],
+                    pagination: {
+                        currentPage: page,
+                        totalPages: 0,
+                        totalItems: 0,
+                        itemsPerPage: limit,
+                        hasNextPage: false,
+                        hasPreviousPage: false,
+                        isLastPage: true
+                    }
+                }
+            });
         }
+
         return res.json({
             success: true,
-            message: 'All courses fetched successfully',
-            allCourses
-        })
+            message: 'Courses fetched successfully',
+            data: {
+                courses: userWithCourses.course,
+                pagination: {
+                    currentPage: page,
+                    totalPages,
+                    totalItems: total,
+                    itemsPerPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPreviousPage: page > 1,
+                    isLastPage
+                }
+            }
+        });
     } catch (error) {
-
         return res.status(500).json({
             success: false,
-            message: 'Internal server error, unable to get all courses',
+            message: 'Internal server error, unable to get courses',
             error: error.message
-        })
+        });
     }
 }
 
 // get all courses that are available in the database ww
 exports.getAllCoursesInDataBase = async (req, res) => {
     try {
-        const allCourse = await Course.find({}).select("name instructor ratingAndReview description language whatYouWillLearn price thumbnail averageRating")
-            .populate(
-                { path: "instructor", select: "firstName lastName image" })
-            .populate({ path: "ratingAndReview", select: "rating review" })
+        const page = parseInt(req.query.page) || 1;
+        const limit = 10;
+        const skip = (page - 1) * limit;
+
+        // Get total count first
+        const total = await Course.countDocuments({});
+        const totalPages = Math.ceil(total / limit);
+        const isLastPage = page >= totalPages;
+
+        const allCourses = await Course.find({})
+            .select("name instructor reviews description language whatYouWillLearn price thumbnail averageRating")
+            .populate({ path: "instructor", select: "firstName lastName image" })
+            .populate({ path: "reviews", select: "rating review" })
+            .skip(skip)
+            .limit(limit)
             .lean()
             .exec();
 
-        if (!allCourse || allCourse.length === 0) {
+        if (!allCourses || allCourses.length === 0) {
             return res.status(200).json({
                 success: true,
-                message: "No course found"
+                message: "No courses found",
+                data: {
+                    courses: [],
+                    pagination: {
+                        currentPage: page,
+                        totalPages: 0,
+                        totalItems: 0,
+                        itemsPerPage: limit,
+                        hasNextPage: false,
+                        hasPreviousPage: false,
+                        isLastPage: true
+                    }
+                }
             });
         }
 
         return res.status(200).json({
             success: true,
-            message: "Courses fetched successfully by category",
-            allCourse: allCourse
+            message: "Courses fetched successfully",
+            data: {
+                courses: allCourses,
+                pagination: {
+                    currentPage: page,
+                    totalPages,
+                    totalItems: total,
+                    itemsPerPage: limit,
+                    hasNextPage: page < totalPages,
+                    hasPreviousPage: page > 1,
+                    isLastPage
+                }
+            }
         });
     } catch (error) {
-        return res.json({
+        return res.status(500).json({
             success: false,
-            message: "Error in getting course by category",
+            message: "Error in getting courses",
             error: error.message
-        })
+        });
     }
 }
 

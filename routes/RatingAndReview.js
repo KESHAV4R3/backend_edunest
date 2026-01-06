@@ -5,6 +5,7 @@ const {
     updateReview,
     getTop10CommentsByCourse,
     getReviewByCourseAndUser,
+    getTopTenReviews
 } = require('../controllers/RatingAndReview');
 
 const { isAuthenticated, isStudent } = require('../middlewares/auth');
@@ -25,5 +26,9 @@ ratingRoutes.get('/top-comments/:courseId', getTop10CommentsByCourse);
 
 // GET: Get a review by courseId and userId
 ratingRoutes.get('/review/:courseId/', isAuthenticated, isStudent, getReviewByCourseAndUser);
+
+// GET: Get top 10 reviews overall
+ratingRoutes.get('/top-reviews', getTopTenReviews);
+
 
 module.exports = ratingRoutes;

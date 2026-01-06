@@ -4,7 +4,7 @@ const express = require('express');
 const dashboard = express.Router();
 
 // import the controllers
-const { getCartCourse, removeCourseFromCart, removeAllCourseFromCart, getAllEarnings, insertCartCourse, updateProfile, getAllStudents, getAllCoursesInDataBase, getAllCourses, sendmailToUserByAdmin, deleteAccountByAdmin, getAllInstructors, sendmailToAdmin, deleteAccount, getUserDetails } = require('../controllers/dashboard');
+const { getCartCourse, removeCourseFromCart, removeAllCourseFromCart, getAllEarnings, insertCartCourse, updateProfile, getAllStudents, getAllCoursesInDataBase, getAllCourses, sendmailToUserByAdmin, deleteAccountByAdmin, getAllInstructors,getStudentAnalytics, sendmailToAdmin, deleteAccount, getUserDetails } = require('../controllers/dashboard');
 
 // import the middleware
 const { isAuthenticated, isAdmin, isInstructor, isStudent } = require('../middlewares/auth');
@@ -24,5 +24,6 @@ dashboard.patch('/removeCourseFromCart/:courseId', isAuthenticated, isStudent, r
 dashboard.delete('/removeAllCourseFromCart', isAuthenticated, isStudent, removeAllCourseFromCart);
 dashboard.post('/sendmailToAdmin', sendmailToAdmin);
 dashboard.post('/sendmailToUser', isAuthenticated, isAdmin, sendmailToUserByAdmin);
+dashboard.get('/getStudentAnalytics', isAuthenticated, isStudent, getStudentAnalytics);
 
 module.exports = dashboard;

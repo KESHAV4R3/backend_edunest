@@ -193,3 +193,45 @@ exports.getReviewByCourseAndUser = async (req, res) => {
         res.status(500).json({ success: false, message: "Error fetching review", error: err.message });
     }
 };
+
+exports.getTopTenReviews = async (req, res) => {
+    try {
+        // Fetch top 10 reviews
+        // Sorting logic: Highest Rating (5 down to 1), then Most Recent (newest first)
+        const topReviews = await RatingAndReview.find({})
+            .sort({ rating: -1, createdAt: -1 }) 
+            .limit(10)
+            .populate({
+                path: "user",
+                select: "firstName lastName image", // Only get necessary public info
+            })
+            .populate({
+                path: "course",
+                select: "name", // Optional: show which course the review is for
+            })
+            .lean()
+            .exec();
+
+        if (!topReviews || topReviews.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "No reviews found",
+                data: []
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Top 10 reviews fetched successfully",
+            data: topReviews
+        });
+
+    } catch (error) {
+        console.error("Top Reviews Fetch Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error, unable to fetch top reviews",
+            error: error.message
+        });
+    }
+};
