@@ -3,20 +3,28 @@ require('dotenv').config();
 
 exports.sendMail = async (to, subject, htmlContent) => {
     try {
-        const smtpConfig = {
+        if (!process.env.MAIL_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
+            throw new Error('SMTP configuration is missing. Please check your .env file');
+        }
+
+        const transporter = nodemailer.createTransport({
             host: process.env.MAIL_HOST,
-            port: process.env.MAIL_PORT || 587,
+            port: parseInt(process.env.MAIL_PORT) || 587,
             secure: process.env.SMTP_SECURE === 'true',
             auth: {
                 user: process.env.SMTP_USER,
                 pass: process.env.SMTP_PASSWORD
+            },
+            tls: {
+                rejectUnauthorized: false // Only for testing, remove in production
             }
-        };
+        });
 
-        const transporter = nodemailer.createTransport(smtpConfig);
+        // Verify connection configuration
+        await transporter.verify();
 
         const mailOptions = {
-            from: process.env.EMAIL_FROM,
+            from: process.env.EMAIL_FROM || process.env.SMTP_USER,
             to,
             subject,
             html: htmlContent
@@ -28,6 +36,9 @@ exports.sendMail = async (to, subject, htmlContent) => {
 
     } catch (error) {
         console.error("❌ Email sending failed:", error.message);
+        if (error.response) {
+            console.error("SMTP Error Response:", error.response);
+        }
         throw error;
     }
 };
