@@ -1,41 +1,33 @@
-// sendMail.js
-const axios = require('axios');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 exports.sendMail = async (to, subject, htmlContent) => {
-  try {
-    const apiKey = process.env.X_BREVO_API_KEY;
-    if (!apiKey) {
-      throw new Error("Brevo API key missing. Set X_BREVO_API_KEY in .env");
+    try {
+        const smtpConfig = {
+            host: process.env.MAIL_HOST,
+            port: process.env.MAIL_PORT || 587,
+            secure: process.env.SMTP_SECURE === 'true',
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASSWORD
+            }
+        };
+
+        const transporter = nodemailer.createTransport(smtpConfig);
+
+        const mailOptions = {
+            from: process.env.EMAIL_FROM,
+            to,
+            subject,
+            html: htmlContent
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log("✅ Email sent:", info.messageId);
+        return info;
+
+    } catch (error) {
+        console.error("❌ Email sending failed:", error.message);
+        throw error;
     }
-
-    const senderRaw = process.env.X_MAIL_FROM;
-    const senderEmail = senderRaw.match(/<(.+)>/) ? senderRaw.match(/<(.+)>/)[1] : "";
-    const senderName = senderRaw.split("<")[0].trim().replace(/"/g, "");
-
-    const payload = {
-      sender: { email: senderEmail, name: senderName },
-      to: [{ email: to }],
-      subject,
-      htmlContent
-    };
-
-    const response = await axios.post(
-      "https://api.brevo.com/v3/smtp/email",
-      payload,
-      {
-        headers: {
-          "api-key": apiKey,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    console.log("✅ Email sent:", response.data);
-    return response.data;
-
-  } catch (error) {
-    console.log("❌ Email sending failed:", error.response?.data || error.message);
-    throw error;
-  }
 };
